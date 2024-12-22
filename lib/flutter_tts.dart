@@ -373,12 +373,17 @@ class FlutterTts {
 
   /// [Future] which invokes the platform specific method for synthesizeToFile
   /// ***Android and iOS supported only***
-  Future<dynamic> synthesizeToFile(String text, String fileName,
-          [bool isFullPath = false]) async =>
+  Future<dynamic> synthesizeToFile(
+    String text,
+    String fileName, [
+    bool isFullPath = false,
+    String? cachePath,
+  ]) async =>
       _channel.invokeMethod('synthesizeToFile', <String, dynamic>{
         "text": text,
         "fileName": fileName,
         "isFullPath": isFullPath,
+        "cachePath": cachePath,
       });
 
   /// [Future] which invokes the platform specific method for setLanguage
