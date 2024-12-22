@@ -705,57 +705,50 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
         }
     }
 
-    /// Synthesize text to a file
-    private fun synthesizeToFile(text: String, fileName: String, isFullPath: Boolean, cachePath: String? = null): String? {
-        val uuid = UUID.randomUUID().toString()
-        bundle?.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, SYNTHESIZE_TO_FILE_PREFIX + uuid)
+    private fun synthesizeToFile(text: String, fileName: String, isFullPath: Boolean, cachePath: String?) : String? {
+        val fullPath: String
+        val uuid: String = UUID.randomUUID().toString()
+        bundle!!.putString(
+            TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID,
+            SYNTHESIZE_TO_FILE_PREFIX + uuid
+        )
 
-        val targetFile: File?
-        val fullPath: String?
-        var result = TextToSpeech.ERROR
+        val result: Int =
+            if(isFullPath){
+                val file = File(fileName)
+                fullPath = file.path
 
-        try {
-            if (!cachePath.isNullOrBlank()) {
-                // Use the provided cachePath
-                val directory = File(cachePath)
-                if (!directory.exists()) {
-                    directory.mkdirs()
-                }
-                targetFile = File(directory, fileName)
-                fullPath = targetFile.absolutePath
-                result = tts?.synthesizeToFile(text, bundle, targetFile, SYNTHESIZE_TO_FILE_PREFIX + uuid) ?: TextToSpeech.ERROR
+                tts!!.synthesizeToFile(text, bundle!!, file!!, SYNTHESIZE_TO_FILE_PREFIX + uuid)
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                // Save to MediaStore if no cachePath is provided and SDK is R or higher
-                val resolver = context?.contentResolver
+                val resolver = this.context?.contentResolver
                 val contentValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                     put(MediaStore.MediaColumns.MIME_TYPE, "audio/wav")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MUSIC)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, cachePath) // cachePath'i RELATIVE_PATH'e atıyoruz
                 }
                 val uri = resolver?.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, contentValues)
-                parcelFileDescriptor = resolver?.openFileDescriptor(uri!!, "rw")
-                fullPath = uri.toString() // Using URI as path for MediaStore
-                result = tts?.synthesizeToFile(text, bundle, parcelFileDescriptor!!, SYNTHESIZE_TO_FILE_PREFIX + uuid) ?: TextToSpeech.ERROR
+                this.parcelFileDescriptor = resolver?.openFileDescriptor(uri!!, "rw")
+                fullPath = "$cachePath${File.separator}$fileName" // Dosya yolu cachePath'i kullanıyor
+
+                tts!!.synthesizeToFile(text, bundle!!, parcelFileDescriptor!!, SYNTHESIZE_TO_FILE_PREFIX + uuid)
             } else {
-                // Save to public music directory for older SDKs if no cachePath is provided
-                val musicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
-                targetFile = File(musicDir, fileName)
-                fullPath = targetFile.absolutePath
-                result = tts?.synthesizeToFile(text, bundle, targetFile, SYNTHESIZE_TO_FILE_PREFIX + uuid) ?: TextToSpeech.ERROR
+                val cacheDir = File(cachePath) // Gelen cachePath'e göre bir dizin oluşturuyoruz
+                if (!cacheDir.exists()) {
+                    cacheDir.mkdirs() // Eğer dizin yoksa oluştur
+                }
+                val file = File(cacheDir, fileName) // Dosyayı cachePath altında oluştur
+                fullPath = file.path
+
+                tts!!.synthesizeToFile(text, bundle!!, file, SYNTHESIZE_TO_FILE_PREFIX + uuid)
             }
 
-            return if (result == TextToSpeech.SUCCESS) {
-                Log.d(tag, "Successfully created file: $fullPath")
-                fullPath
-            } else {
-                Log.e(tag, "Failed creating file: $fullPath, result: $result")
-                null
-            }
-        } catch (e: Exception) {
-            Log.e(tag, "Error synthesizing to file", e)
+
+        if (result == TextToSpeech.SUCCESS) {
+            Log.d(tag, "Successfully created file : $fullPath")
+            return fullPath
+        } else {
+            Log.d(tag, "Failed creating file : $fullPath")
             return null
-        } finally {
-            parcelFileDescriptor?.close()
         }
     }
 
