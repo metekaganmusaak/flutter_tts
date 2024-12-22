@@ -373,6 +373,7 @@ class FlutterTts {
 
   /// [Future] which invokes the platform specific method for synthesizeToFile
   /// ***Android and iOS supported only***
+  /// [cachePath] option is added.
   Future<dynamic> synthesizeToFile(
     String text,
     String fileName, [
