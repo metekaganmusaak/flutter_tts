@@ -705,6 +705,7 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
         }
     }
 
+    /// Synthesize text to a file
     private fun synthesizeToFile(text: String, fileName: String, isFullPath: Boolean, cachePath: String? = null): String? {
         val uuid = UUID.randomUUID().toString()
         bundle?.putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, SYNTHESIZE_TO_FILE_PREFIX + uuid)
