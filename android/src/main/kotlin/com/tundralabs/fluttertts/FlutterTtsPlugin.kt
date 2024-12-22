@@ -710,6 +710,7 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
         }
     }
 
+    /// Updated this code
     private fun synthesizeToFile(
         text: String,
         fileName: String,
