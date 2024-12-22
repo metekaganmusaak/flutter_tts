@@ -724,39 +724,41 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
             SYNTHESIZE_TO_FILE_PREFIX + uuid
         )
 
-        val result: Int =
-            if (isFullPath) {
-                val file = File(fileName)
-                fullPath = file.path
-                tts!!.synthesizeToFile(text, bundle!!, file, SYNTHESIZE_TO_FILE_PREFIX + uuid)
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val resolver = this.context?.contentResolver
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                    put(MediaStore.MediaColumns.MIME_TYPE, "audio/wav")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, cachePath ?: "TTS")
-                }
-                val uri = resolver?.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, contentValues)
-                this.parcelFileDescriptor = resolver?.openFileDescriptor(uri!!, "rw")
-                fullPath = "$cachePath${File.separator}$fileName"
+        val result: Int = if (isFullPath) {
+            // Tam yol verilmişse
+            val file = File(fileName)
+            fullPath = file.path
 
-                tts!!.synthesizeToFile(text, bundle!!, parcelFileDescriptor!!, SYNTHESIZE_TO_FILE_PREFIX + uuid)
+            tts!!.synthesizeToFile(text, bundle!!, file, SYNTHESIZE_TO_FILE_PREFIX + uuid)
+        } else {
+            // Uygulamanın kendi `cache` dizinini kullan
+            val cacheDir = if (cachePath != null) {
+                File(cachePath)
             } else {
-                val cacheDir = File(cachePath ?: context?.cacheDir!!.absolutePath)
-                if (!cacheDir.exists()) {
-                    cacheDir.mkdirs()
-                }
-                val file = File(cacheDir, fileName)
-                fullPath = file.path
-                tts!!.synthesizeToFile(text, bundle!!, file, SYNTHESIZE_TO_FILE_PREFIX + uuid)
+                context?.cacheDir // Uygulamanın varsayılan `cache` dizini
             }
 
-        return if (result == TextToSpeech.SUCCESS) {
-            Log.d(tag, "Successfully created file : $fullPath")
-            fullPath
+            if (cacheDir == null) {
+                Log.e(tag, "Cache directory is null.")
+                return null
+            }
+
+            if (!cacheDir.exists()) {
+                cacheDir.mkdirs() // Eğer dizin yoksa oluştur
+            }
+
+            val file = File(cacheDir, fileName) // Dosyayı oluştur
+            fullPath = file.path
+
+            tts!!.synthesizeToFile(text, bundle!!, file, SYNTHESIZE_TO_FILE_PREFIX + uuid)
+        }
+
+        if (result == TextToSpeech.SUCCESS) {
+            Log.d(tag, "Successfully created file: $fullPath")
+            return fullPath
         } else {
-            Log.d(tag, "Failed creating file : $fullPath")
-            null
+            Log.d(tag, "Failed creating file: $fullPath")
+            return null
         }
     }
 
