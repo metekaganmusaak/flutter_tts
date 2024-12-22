@@ -347,9 +347,14 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
                 }
                 val fileName: String? = call.argument("fileName")
                 val isFullPath: Boolean? = call.argument("isFullPath")
-                val cachePath : String? = call.argument("cachePath")
+                val cachePath: String? = call.argument("cachePath")
 
-                val path : String? = synthesizeToFile(text!!, fileName!!, isFullPath!!, cachePath!!)
+                val path: String? = synthesizeToFile(
+                    text!!,
+                    fileName!!,
+                    isFullPath!!,
+                    cachePath
+                )
                 if (awaitSynthCompletion) {
                     synth = true
                     synthResult = result
@@ -705,7 +710,12 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
         }
     }
 
-    private fun synthesizeToFile(text: String, fileName: String, isFullPath: Boolean, cachePath: String?) : String? {
+    private fun synthesizeToFile(
+        text: String,
+        fileName: String,
+        isFullPath: Boolean,
+        cachePath: String?
+    ): String? {
         val fullPath: String
         val uuid: String = UUID.randomUUID().toString()
         bundle!!.putString(
@@ -714,43 +724,41 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
         )
 
         val result: Int =
-            if(isFullPath){
+            if (isFullPath) {
                 val file = File(fileName)
                 fullPath = file.path
-
-                tts!!.synthesizeToFile(text, bundle!!, file!!, SYNTHESIZE_TO_FILE_PREFIX + uuid)
+                tts!!.synthesizeToFile(text, bundle!!, file, SYNTHESIZE_TO_FILE_PREFIX + uuid)
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val resolver = this.context?.contentResolver
                 val contentValues = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                     put(MediaStore.MediaColumns.MIME_TYPE, "audio/wav")
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, cachePath) // cachePath'i RELATIVE_PATH'e atıyoruz
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, cachePath ?: "TTS")
                 }
                 val uri = resolver?.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, contentValues)
                 this.parcelFileDescriptor = resolver?.openFileDescriptor(uri!!, "rw")
-                fullPath = "$cachePath${File.separator}$fileName" // Dosya yolu cachePath'i kullanıyor
+                fullPath = "$cachePath${File.separator}$fileName"
 
                 tts!!.synthesizeToFile(text, bundle!!, parcelFileDescriptor!!, SYNTHESIZE_TO_FILE_PREFIX + uuid)
             } else {
-                val cacheDir = File(cachePath) // Gelen cachePath'e göre bir dizin oluşturuyoruz
+                val cacheDir = File(cachePath ?: context?.cacheDir!!.absolutePath)
                 if (!cacheDir.exists()) {
-                    cacheDir.mkdirs() // Eğer dizin yoksa oluştur
+                    cacheDir.mkdirs()
                 }
-                val file = File(cacheDir, fileName) // Dosyayı cachePath altında oluştur
+                val file = File(cacheDir, fileName)
                 fullPath = file.path
-
                 tts!!.synthesizeToFile(text, bundle!!, file, SYNTHESIZE_TO_FILE_PREFIX + uuid)
             }
 
-
-        if (result == TextToSpeech.SUCCESS) {
+        return if (result == TextToSpeech.SUCCESS) {
             Log.d(tag, "Successfully created file : $fullPath")
-            return fullPath
+            fullPath
         } else {
             Log.d(tag, "Failed creating file : $fullPath")
-            return null
+            null
         }
     }
+
 
     private fun invokeMethod(method: String, arguments: Any) {
         handler!!.post {
