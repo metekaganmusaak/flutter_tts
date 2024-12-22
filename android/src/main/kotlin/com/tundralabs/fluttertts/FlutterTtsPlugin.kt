@@ -340,28 +340,26 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
             }
 
             "synthesizeToFile" -> {
-                val text: String? = call.argument("text")
-                if (synth) {
-                    result.success(0)
-                    return
-                }
-                val fileName: String? = call.argument("fileName")
-                val isFullPath: Boolean? = call.argument("isFullPath")
-                val cachePath: String? = call.argument("cachePath")
+    val text: String? = call.argument("text")
+    val fileName: String? = call.argument("fileName")
+    val isFullPath: Boolean? = call.argument("isFullPath")
+    val cachePath: String? = call.argument("cachePath")
 
-                val path: String? = synthesizeToFile(
-                    text!!,
-                    fileName!!,
-                    isFullPath!!,
-                    cachePath
-                )
-                if (awaitSynthCompletion) {
-                    synth = true
-                    synthResult = result
-                } else {
-                    result.success(path)
-                }
-            }
+    if (text == null || fileName == null || isFullPath == null) {
+        result.error("INVALID_ARGUMENTS", "Missing arguments", null)
+        return
+    }
+
+    synthesizeToFileAsync(text, fileName, isFullPath, cachePath)
+        .thenAccept { path ->
+            result.success(path) // İşlem başarıyla tamamlandığında path döndürülür
+        }
+        .exceptionally { throwable ->
+            Log.e(tag, "Error synthesizing file", throwable)
+            result.error("SYNTHESIZE_ERROR", throwable.message, null) // Hata durumunda mesaj gönder
+            null
+        }
+}
 
             "pause" -> {
                 isPaused = true
@@ -711,56 +709,59 @@ class FlutterTtsPlugin : MethodCallHandler, FlutterPlugin {
     }
 
     /// Updated this code
-    private fun synthesizeToFile(
-        text: String,
-        fileName: String,
-        isFullPath: Boolean,
-        cachePath: String?
-    ): String? {
-        val fullPath: String
+    import java.util.concurrent.CompletableFuture
+
+private fun synthesizeToFileAsync(
+    text: String,
+    fileName: String,
+    isFullPath: Boolean,
+    cachePath: String?
+): CompletableFuture<String?> {
+    val future = CompletableFuture<String?>()
+
+    try {
         val uuid: String = UUID.randomUUID().toString()
         bundle!!.putString(
             TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID,
             SYNTHESIZE_TO_FILE_PREFIX + uuid
         )
 
-        val result: Int = if (isFullPath) {
-            // Tam yol verilmişse
-            val file = File(fileName)
-            fullPath = file.path
-
-            tts!!.synthesizeToFile(text, bundle!!, file, SYNTHESIZE_TO_FILE_PREFIX + uuid)
+        val cacheDir = if (isFullPath) {
+            File(fileName) // Tam yol verildiyse direkt dosyayı kullan
         } else {
-            // Uygulamanın kendi `cache` dizinini kullan
-            val cacheDir = if (cachePath != null) {
-                File(cachePath)
-            } else {
-                context?.cacheDir // Uygulamanın varsayılan `cache` dizini
-            }
-
-            if (cacheDir == null) {
+            val resolvedCachePath = cachePath?.let { File(it) } ?: context?.cacheDir
+            resolvedCachePath?.apply {
+                if (!exists()) mkdirs() // Eğer cache dizini yoksa oluştur
+            } ?: run {
                 Log.e(tag, "Cache directory is null.")
-                return null
+                future.completeExceptionally(IllegalStateException("Cache directory is null."))
+                return future
             }
-
-            if (!cacheDir.exists()) {
-                cacheDir.mkdirs() // Eğer dizin yoksa oluştur
-            }
-
-            val file = File(cacheDir, fileName) // Dosyayı oluştur
-            fullPath = file.path
-
-            tts!!.synthesizeToFile(text, bundle!!, file, SYNTHESIZE_TO_FILE_PREFIX + uuid)
+            File(resolvedCachePath, fileName) // Cache diziniyle dosya oluştur
         }
+
+        val result: Int = tts!!.synthesizeToFile(
+            text,
+            bundle!!,
+            cacheDir,
+            SYNTHESIZE_TO_FILE_PREFIX + uuid
+        )
 
         if (result == TextToSpeech.SUCCESS) {
-            Log.d(tag, "Successfully created file: $fullPath")
-            return fullPath
+            Log.d(tag, "Successfully created file: ${cacheDir.path}")
+            future.complete(cacheDir.path) // İşlem başarılıysa path'i döndür
         } else {
-            Log.d(tag, "Failed creating file: $fullPath")
-            return null
+            Log.d(tag, "Failed creating file: ${cacheDir.path}")
+            future.completeExceptionally(RuntimeException("Failed to synthesize file"))
         }
+    } catch (e: Exception) {
+        Log.e(tag, "Error synthesizing to file", e)
+        future.completeExceptionally(e) // Hata durumunda future hata ile tamamlanır
     }
+
+    return future
+}
+
 
 
     private fun invokeMethod(method: String, arguments: Any) {
